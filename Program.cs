@@ -4,18 +4,25 @@
     {
         static void Main(string[] args)
         {
-            if (args.Length == 0)
+            if (args.Length < 2)
             {
                 ShowHelp();
                 return;
             }
 
             var command = args[0];
+            var targetDirectory = args[1];
+
+            if (!Directory.Exists(targetDirectory))
+            {
+                Console.WriteLine("The specified directory does not exist.");
+                return;
+            }
 
             switch (command)
             {
                 case "init":
-                    Repository.Init(Environment.CurrentDirectory);
+                    Repository.Init(targetDirectory);
                     break;
                 case "add":
                     if (args.Length < 2)
@@ -23,7 +30,7 @@
                         Console.WriteLine("Specify a file to add.");
                         return;
                     }
-                    Repository.Add(Environment.CurrentDirectory, args[1]);
+                    Repository.Add(targetDirectory, args[2]);
                     break;
                 case "commit":
                     if (args.Length < 2)
@@ -31,7 +38,7 @@
                         Console.WriteLine("Specify a commit message.");
                         return;
                     }
-                    Repository.Commit(Environment.CurrentDirectory, args[1]);
+                    Repository.Commit(targetDirectory, args[2]);
                     break;
                 case "branch":
                     if (args.Length < 2)
@@ -39,7 +46,7 @@
                         Console.WriteLine("Specify a branch name.");
                         return;
                     }
-                    Repository.CreateBranch(Environment.CurrentDirectory, args[1]);
+                    Repository.CreateBranch(targetDirectory, args[2]);
                     break;
                 case "checkout":
                     if (args.Length < 2)
@@ -47,7 +54,10 @@
                         Console.WriteLine("Specify a branch name.");
                         return;
                     }
-                    Repository.SwitchBranch(Environment.CurrentDirectory, args[1]);
+                    Repository.SwitchBranch(targetDirectory, args[2]);
+                    break;
+                case "status":
+                    Repository.Status(targetDirectory);
                     break;
                 default:
                     ShowHelp();
@@ -63,6 +73,7 @@
             Console.WriteLine("  commit <message>    Commit changes");
             Console.WriteLine("  branch <name>       Create a new branch");
             Console.WriteLine("  checkout <name>     Switch to a branch");
+            Console.WriteLine("  status              Show the current status");
         }
     }
 }
