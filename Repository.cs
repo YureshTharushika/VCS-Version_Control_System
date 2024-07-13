@@ -23,7 +23,6 @@ namespace VCS
         public static void Add(string repoPath, string filePath)
         {
             var fullPath = Path.Combine(repoPath, filePath);
-            Console.WriteLine("Full Path: " + fullPath);
 
             if (!File.Exists(fullPath))
             {
@@ -41,8 +40,7 @@ namespace VCS
             }
 
             var relativePath = Path.GetRelativePath(repoPath, fullPath);
-            var indexPath = Path.Combine(repoPath, ".myvcs", "index");
-            File.AppendAllText(indexPath, $"{relativePath} {hash}\n");
+            AddToIndex(repoPath, relativePath, hash);
 
             Console.WriteLine("File added to the staging area.");
         }
@@ -51,52 +49,106 @@ namespace VCS
         {
             var stagedFiles = GetStagedFiles(repoPath);
 
-            if (!stagedFiles.Any())
-            {
-                Console.WriteLine("No changes added to commit.");
-                return;
-            }
-
-            var commitContent = new StringBuilder();
-            commitContent.AppendLine($"Commit: {message}");
-            commitContent.AppendLine($"Date: {DateTime.Now}");
+            var commit = new StringBuilder();
+            commit.AppendLine($"Commit: {message}");
+            commit.AppendLine($"Date: {DateTime.Now}");
 
             foreach (var file in stagedFiles)
             {
-                commitContent.AppendLine($"{file.Key} {file.Value}");
+                commit.AppendLine($"{file.Key} {file.Value}");
             }
 
-            var commitHash = ComputeHash(Encoding.UTF8.GetBytes(commitContent.ToString()));
+            var commitHash = ComputeHash(Encoding.UTF8.GetBytes(commit.ToString()));
             var commitPath = Path.Combine(repoPath, ".myvcs", "objects", commitHash);
+            File.WriteAllText(commitPath, commit.ToString());
 
-            File.WriteAllText(commitPath, commitContent.ToString());
-            File.WriteAllText(Path.Combine(repoPath, ".myvcs", "HEAD"), commitHash);
+            var headPath = Path.Combine(repoPath, ".myvcs", "HEAD");
+            var headContent = File.ReadAllText(headPath).Trim();
+            if (headContent.StartsWith("ref: "))
+            {
+                var branchPath = Path.Combine(repoPath, ".myvcs", headContent.Substring(5));
+                File.WriteAllText(branchPath, commitHash);
+            }
+            else
+            {
+                File.WriteAllText(headPath, commitHash);
+            }
 
-            // Clear the staging area
-            File.WriteAllText(Path.Combine(repoPath, ".myvcs", "index"), string.Empty);
+            // Clear the index after commit
+            ClearIndex(repoPath);
 
             Console.WriteLine("Committed changes.");
         }
 
+        private static void ClearIndex(string repoPath)
+        {
+            var indexPath = Path.Combine(repoPath, ".myvcs", "index");
+            File.WriteAllText(indexPath, string.Empty);
+        }
+
+        private static void AddToIndex(string repoPath, string filePath, string fileHash)
+        {
+            var indexPath = Path.Combine(repoPath, ".myvcs", "index");
+            File.AppendAllText(indexPath, $"{filePath} {fileHash}\n");
+        }
+
         public static void CreateBranch(string repoPath, string branchName)
         {
-            var head = File.ReadAllText(Path.Combine(repoPath, ".myvcs", "HEAD")).Trim();
+            var headCommit = GetHeadCommit(repoPath);
             var branchPath = Path.Combine(repoPath, ".myvcs", "refs", "heads", branchName);
-            File.WriteAllText(branchPath, head);
+            File.WriteAllText(branchPath, headCommit);
             Console.WriteLine($"Branch '{branchName}' created.");
         }
 
         public static void SwitchBranch(string repoPath, string branchName)
         {
             var branchPath = Path.Combine(repoPath, ".myvcs", "refs", "heads", branchName);
-            if (File.Exists(branchPath))
-            {
-                File.WriteAllText(Path.Combine(repoPath, ".myvcs", "HEAD"), $"ref: refs/heads/{branchName}");
-                Console.WriteLine($"Switched to branch '{branchName}'.");
-            }
-            else
+            if (!File.Exists(branchPath))
             {
                 Console.WriteLine($"Branch '{branchName}' does not exist.");
+                return;
+            }
+
+            var newHeadCommit = File.ReadAllText(branchPath).Trim();
+            var currentHeadCommit = GetHeadCommit(repoPath);
+
+            UpdateWorkingDirectory(repoPath, currentHeadCommit, newHeadCommit);
+
+            File.WriteAllText(Path.Combine(repoPath, ".myvcs", "HEAD"), $"ref: refs/heads/{branchName}");
+            Console.WriteLine($"Switched to branch '{branchName}'.");
+        }
+
+        private static void UpdateWorkingDirectory(string repoPath, string oldCommitHash, string newCommitHash)
+        {
+            var oldCommitFiles = GetCommitFiles(repoPath, oldCommitHash);
+            var newCommitFiles = GetCommitFiles(repoPath, newCommitHash);
+
+            // Remove files that are in the old commit but not in the new commit
+            foreach (var oldFile in oldCommitFiles)
+            {
+                if (!newCommitFiles.ContainsKey(oldFile.Key))
+                {
+                    var filePath = Path.Combine(repoPath, oldFile.Key);
+                    if (File.Exists(filePath))
+                    {
+                        File.Delete(filePath);
+                    }
+                }
+            }
+
+            // Add or update files from the new commit
+            foreach (var newFile in newCommitFiles)
+            {
+                var filePath = Path.Combine(repoPath, newFile.Key);
+                var blobPath = Path.Combine(repoPath, ".myvcs", "objects", newFile.Value);
+                File.WriteAllBytes(filePath, File.ReadAllBytes(blobPath));
+            }
+
+            // Clear the index and add the new commit files to the index
+            ClearIndex(repoPath);
+            foreach (var newFile in newCommitFiles)
+            {
+                AddToIndex(repoPath, newFile.Key, newFile.Value);
             }
         }
 
@@ -210,7 +262,7 @@ namespace VCS
                 if (File.Exists(commitPath))
                 {
                     var lines = File.ReadAllLines(commitPath);
-                    foreach (var line in lines.Skip(2)) // Skip the commit message and date
+                    foreach (var line in lines)
                     {
                         var parts = line.Split(' ');
                         if (parts.Length == 2)
