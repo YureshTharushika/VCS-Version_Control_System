@@ -72,7 +72,7 @@ Usage
 1. Clone the repository:
 
     ```
-    git clone https://github.com/yourusername/SimpleVCS.git
+    git clone https://github.com/YureshTharushika/VCS-Version_Control_System.git
     ```
 
 2. Navigate to the project directory:
