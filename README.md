@@ -27,9 +27,7 @@ Usage
 
 ### Command-Line Usage
 
-    ```
     vcs <targetDirectory> <command> [options]
-    ```
     
 ### Examples
 
